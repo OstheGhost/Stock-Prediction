@@ -16,3 +16,4 @@ start_date = end_date - pd.Timedelta(days=365*years)
 data = yf.download(ticker, start=start_date, end=end_date)
 
 data.to_csv(ticker + "_data.csv")  # Replace with your desired filename
+#Ain't nothin
