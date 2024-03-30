@@ -1,48 +1,49 @@
 # This predictor uses simple linear regression
 # Need to look into Support Vector Machines (SVM), Random Forests, and LSTMs
 
-import yfinance as yf
 from sklearn.linear_model import LinearRegression  # Example model
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
 import pandas as pd
 import SQL_Functions as sql
 import datetime as dt
+from matplotlib import pyplot as plt
 
-ticker = "AAPL"  # Replace with your desired stock ticker
+# Plot X and y arrays
+def plotStocks(X, y):
+    # plt.scatter(X_train, y_train, color='g')
+    plt.plot(X["Close"], y, color='k')
+
+    plt.show()
+
+# Add potential predictive factors to data array
+def buildDataArray(data):
+    # Build moving averages
+    data["MA25"] = data["Close"].rolling(window=25).mean()
+    data["MA50"] = data["Close"].rolling(window=50).mean()
+    data["MA100"] = data["Close"].rolling(window=100).mean()
+    data["MA200"] = data["Close"].rolling(window=200).mean()
+    data["MA500"] = data["Close"].rolling(window=500).mean()
+    data["MA1000"] = data["Close"].rolling(window=1000).mean()
+
+    # drop null data
+    data = data.dropna(axis=0, how='any')
+
+    #convert dates to numeric
+    data["Date"] = pd.to_datetime(data["Date"]).map(dt.datetime.toordinal)
+
+    return data
+
+def printPredictionInfo(ticker, y_pred, data):
+    #mse = mean_squared_error(y_test, y_pred)
+    #print("Mean Squared Error: ", mse)
+    print(ticker + " predicted range from " + str(y_pred.min()) + " to " + str(y_pred.max()))
+    print("Average predicted price = " + str(y_pred.mean()))
+    print("Current " + ticker + " price = " + str(data['Close'].iloc[-1]))
+
+
+ticker = "DIS"  # Replace with your desired stock ticker
 start_date = "2020-01-01"
 end_date = "2023-12-31"
-
-#data = yf.download(ticker, start=start_date, end=end_date)
-#data = yf.download(ticker, period='1y')
-sql.createSQLConnection()
-data = sql.queryStockPrices("DIS")
-sql.closeSqlConnection()
-
-# if not isinstance(data, pd.DataFrame):
-#     data = data.to_frame()
-
-#print(data)
-
-#data = data['Close']
-data["MA50"] = data["Close"].rolling(window=50).mean()
-
-data = data.dropna(axis=0, how='any')
-
-data["Date"] = pd.to_datetime(data["Date"]).map(dt.datetime.toordinal)
-X = data[["Date"]]
-y = data[["Close", "MA50"]] #.shift(-20)
-
-#data = data.dropna(axis=0, how='any')
-
-# print(X)
-# print(y)
-
-#X_train, X_test, y_train, y_test = train_test_split(data[:-1], data['Close'][1:], test_size=0.2)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-
-model = LinearRegression()
-model.fit(X_train, y_train)
 
 # Set up array of dates to predict Close prices for
 x_arr = ["2024-05-01", "2024-09-01", "2025-01-01", "2030-01-01"]
@@ -51,27 +52,35 @@ x_vals["OriginalDate"] = x_vals["Date"].copy()
 x_vals["Date"] = pd.to_datetime(x_vals["Date"]).map(dt.datetime.toordinal)
 x_pred = x_vals[["Date"]]
 
-y_pred = model.predict(x_pred)
 
-# df_x_pred = pd.DataFrame(x_pred, columns=pd.Series("Feature_" + str(i) for i in range(x_pred.size)))
-# df_y_pred = pd.DataFrame(y_pred.reshape(-1, 1), columns=["Prediction"])
+sql.createSQLConnection()
 
-# predictions = y_pred.astype(str)
-predictions = pd.concat([x_vals[["OriginalDate"]], pd.DataFrame(y_pred, columns=["max", "min"])], axis=1)
-print(predictions)
-#mse = mean_squared_error(y_test, y_pred)
-#print("Mean Squared Error: ", mse)
-print(ticker + " predicted range from " + str(y_pred.min()) + " to " + str(y_pred.max()))
-print("Average predicted price = " + str(y_pred.mean()))
-print("Current " + ticker + " price = " + str(data['Close'].iloc[-1]))
-# y_pred_2 = y_pred.sort()
-# len = y_pred.__len__
-# median_idx = len // 2
-# print("Median predicted price = " + str(y_pred_2[median_idx]))
+# Get list of stock symbols from SQL
+stockSymbols = sql.queryStocks()
 
-# Predict for the next 20 days (adjust for your time horizon)
-#last_data_point = X.iloc[-1]  # Get features for the last data point
-#future_prediction = model.predict([last_data_point])
+# Loop over stocks
+for stock in stockSymbols:
+    symbol = stock[0]
+    data = sql.queryStockPrices(symbol)
+    data = buildDataArray(data)
 
-# Print the predicted closing price (assuming daily predictions)
-#print(f"Predicted closing price in 20 days: {future_prediction[0]:.2f}")
+    # Skip this iteration if we have no data
+    if data.size < 100:
+        continue
+
+    X = data[["Date"]]
+    y = data[["Close", "MA25", "MA50", "MA100", "MA200", "MA500", "MA1000"]] #.shift(-20)
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+    model_test = LinearRegression()
+    model_test.fit(X_test, y_test)
+
+    y_pred = model_test.predict(x_pred)
+
+    predictions = pd.concat([x_vals[["OriginalDate"]], pd.DataFrame(y_pred, columns=["Close", "MA25", "MA50", "MA100", "MA200", "MA500", "MA1000"])], axis=1)
+    predictions.insert(loc=0, column="Symbol", value=symbol)
+    # print(predictions)
+    sql.insertPredictions(predictions)
+
+sql.closeSqlConnection()

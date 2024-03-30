@@ -52,6 +52,7 @@ def insertStocks(stocks):
     for chunk in stocks.iterrows(chunksize=1000):
         value_list = chunk[1].to_numpy().tolist()  # Convert chunk to list of values
         cursor.executemany(sql_query, value_list)
+        connection.commit()
     return
 
 def insertStocksPrices(stockPrices):
@@ -65,12 +66,9 @@ def insertStocksPrices(stockPrices):
                             [Close] [varchar](50) NULL,
                             [Volume] [varchar](50) NULL
                             )''')
-
-    # listValues = listValuesForSQL(stockPrices)
-    # if listValues != "":
+    
     columns = list(stockPrices)
     column_names = stockPrices.columns.tolist()
-    #sql_query = f"INSERT INTO [dbo].[StockPrices] ({','.join(column_names)}) VALUES ({','.join(['?'] * len(column_names))})"
     chunksize = 1000
     for i in range(0, len(stockPrices), chunksize):
         chunk = stockPrices.iloc[i:i+chunksize]
@@ -78,7 +76,30 @@ def insertStocksPrices(stockPrices):
         value_list = chunk.values.tolist()  # Convert chunk to list of values
         cursor.executemany(sql_query, value_list)
         connection.commit()
-    #stockPrices.to_sql("dbo.StockPrices", engine, if_exists='append', index=False, chunksize=1000)
+    return
+
+def insertPredictions(predictions):
+    executeSQL('''  IF NOT EXISTS (SELECT * FROM sysobjects WHERE id = object_id(N'[dbo].[Predictions]'))
+                    CREATE TABLE dbo.Predictions (
+	                        [Symbol] [varchar](50) NOT NULL,
+                            [Date] [varchar](50) NULL,
+                            [Close] [varchar](50) NULL,
+                            [MA25] [varchar](50) NULL,
+                            [MA50] [varchar](50) NULL,
+                            [MA100] [varchar](50) NULL,
+                            [MA200] [varchar](50) NULL,
+                            [MA500] [varchar](50) NULL,
+                            [MA1000] [varchar](50) NULL,
+                            )''')
+    
+    column_names = predictions.columns.tolist()
+    chunksize = 1000
+    for i in range(0, len(predictions), chunksize):
+        chunk = predictions.iloc[i:i+chunksize]
+        sql_query = f"INSERT INTO [dbo].[Predictions] ([Symbol],[Date],[Close],[MA25],[MA50],[MA100],[MA200],[MA500],[MA1000]) VALUES ({','.join(['?'] * len(column_names))})"
+        value_list = chunk.values.tolist()  # Convert chunk to list of values
+        cursor.executemany(sql_query, value_list)
+        connection.commit()
     return
 
 #Get all rows from a specified SQL table
@@ -86,20 +107,12 @@ def queryStockPrices(stock=""):
     query = "SELECT * FROM dbo.StockPrices"
     if stock != "":
         query = query + " WHERE Symbol = '" + stock + "'"
-    #cursor.execute(query)
-    #queryRows = pd.DataFrame(cursor.fetchall(), columns=[col[0] for col in cursor.description])
-    #queryRows = pd.DataFrame(queryRows)
     queryRows = pd.read_sql(query, connection)
     return queryRows
 
 #Get all rows from a specified SQL table
 def getMericaStonks(stock=""):
     query = "EXEC dbo.stonks"
-    # if stock != "":
-    #     query = query + " WHERE Symbol = '" + stock + "'"
-    #cursor.execute(query)
-    #queryRows = pd.DataFrame(cursor.fetchall(), columns=[col[0] for col in cursor.description])
-    #queryRows = pd.DataFrame(queryRows)
     queryRows = pd.read_sql(query, connection)
     return queryRows
 
@@ -108,10 +121,6 @@ def queryStocks():
     query = "SELECT * FROM dbo.Stocks"
     cursor.execute(query)
     data = cursor.fetchall()
-    # columns = [col[0] for col in cursor.description][:1]
-    # queryRows = pd.DataFrame(data, columns=columns)
-    # for row in data:
-    #     queryRows.append(row)
     return data
 
 def createSQLConnection(fullReload=1):
@@ -122,18 +131,10 @@ def createSQLConnection(fullReload=1):
     database = 'Prod'
     connection_string = 'Driver=SQL Server;Server=' + server + ';Database=' + database + ';Trusted_Connection=True;'
     connection = pyodbc.connect(connection_string)
-    #engine = create_engine('mssql+pyodbc://' + connection_string)
     cursor = connection.cursor()
-    # if fullReload == 1:
-    #     truncateTables()
     return
 
 def closeSqlConnection():
     cursor.close()
     connection.close()
     return
-
-#Do Stuff
-# createSQLConnection()
-# queryStockPrices("AAPL")
-# closeSqlConnection()

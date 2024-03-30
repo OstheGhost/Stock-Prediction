@@ -29,7 +29,7 @@ def getStockPrices(stock, years=10):
     stockPrices = sql.queryStockPrices(stock)
     stockPrices = pd.DataFrame(stockPrices)
 
-    #If no SQL data, short circuit
+    #If SQL data present, short circuit
     if len(stockPrices) > 0:
         return None
     
